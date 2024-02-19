@@ -4,10 +4,10 @@ use std::{cmp, env};
 
 fn main() -> Result<(), std::io::Error> {
     let args: Vec<String> = env::args().collect();
-    let command = &args[1];
+    let command = if args.len() > 1 { args[1].as_str() } else { "" };
     let mut stream = TcpStream::connect("192.168.0.2:50001")?;
 
-    match command.as_str() {
+    match command {
         "volume" => {
             let volume = if args.len() > 2 {
                 let amount = match i8::from_str_radix(&args[2], 10) {
@@ -20,7 +20,12 @@ fn main() -> Result<(), std::io::Error> {
             };
             println!("{volume:?}");
         }
-        _ => {}
+        "status" | "" => {
+            println!("Status: TODO");
+        }
+        cmd => {
+            println!("Unknown command: {cmd}");
+        }
     }
 
     stream.shutdown(std::net::Shutdown::Both)?;
