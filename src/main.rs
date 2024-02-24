@@ -1,5 +1,5 @@
-use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::{FromPrimitive, ToPrimitive};
 use std::io::prelude::*;
 use std::net::TcpStream;
 use std::{cmp, env};
@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[derive(Debug, FromPrimitive)]
+#[derive(Debug, FromPrimitive, ToPrimitive)]
 enum Source {
     Wifi = 0b0010,
     USB = 0b1100,
@@ -46,19 +46,31 @@ enum Source {
     Optical = 0b1011,
 }
 
-#[derive(Debug, FromPrimitive)]
-enum Standby {
+#[derive(Debug, FromPrimitive, ToPrimitive)]
+enum AutoStandby {
     TwentyMinutes = 0b00,
     SixtyMinutes = 0b01,
     Never = 0b10,
 }
 
+#[derive(Debug, FromPrimitive, ToPrimitive)]
+enum Power {
+    Off = 1,
+    On = 0,
+}
+
+#[derive(Debug, FromPrimitive, ToPrimitive)]
+enum SpeakerOrientation {
+    MainIsLeft = 1,
+    MainIsRight = 0,
+}
+
 #[derive(Debug)]
 struct Status {
-    power: bool,
-    inverse: bool,
+    power: Power,
+    orientation: SpeakerOrientation,
     source: Source,
-    standby: Standby,
+    standby: AutoStandby,
 }
 
 fn get_status(stream: &mut TcpStream) -> std::io::Result<Status> {
@@ -74,16 +86,24 @@ fn get_status(stream: &mut TcpStream) -> std::io::Result<Status> {
         None => Source::Optical,
     };
     let standby = match FromPrimitive::from_u8((bits >> 4) & 0b11) {
-        Some(Standby::TwentyMinutes) => Standby::TwentyMinutes,
-        Some(Standby::SixtyMinutes) => Standby::SixtyMinutes,
-        Some(Standby::Never) => Standby::Never,
-        None => Standby::TwentyMinutes,
+        Some(AutoStandby::TwentyMinutes) => AutoStandby::TwentyMinutes,
+        Some(AutoStandby::SixtyMinutes) => AutoStandby::SixtyMinutes,
+        Some(AutoStandby::Never) => AutoStandby::Never,
+        None => AutoStandby::TwentyMinutes,
     };
-    let inverse = if (bits >> 6) & 1 == 1 { true } else { false };
-    let power = if (bits >> 7) & 1 == 0 { true } else { false };
+    let orientation = match FromPrimitive::from_u8((bits >> 6) & 1) {
+        Some(SpeakerOrientation::MainIsLeft) => SpeakerOrientation::MainIsLeft,
+        Some(SpeakerOrientation::MainIsRight) => SpeakerOrientation::MainIsRight,
+        None => SpeakerOrientation::MainIsRight,
+    };
+    let power = match FromPrimitive::from_u8((bits >> 7) & 1) {
+        Some(Power::Off) => Power::Off,
+        Some(Power::On) => Power::On,
+        None => Power::Off,
+    };
     Ok(Status {
         power,
-        inverse,
+        orientation,
         source,
         standby,
     })
