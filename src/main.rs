@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Power::Off => {}
             }
         }
-        "toggle" => {
+        "toggle" | "t" => {
             let mut status = get_status(&mut stream)?;
             match status.power {
                 Power::On => {
@@ -43,24 +43,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             set_status(&mut stream, status)?;
         }
+        "wifi" | "w" => {
+            set_source(&mut stream, Source::Wifi)?;
+        }
+        "usb" | "u" => {
+            set_source(&mut stream, Source::USB)?;
+        }
+        "bluetooth" | "bt" | "b" => {
+            set_source(&mut stream, Source::BluetoothPaired)?;
+        }
+        "aux" | "a" => {
+            set_source(&mut stream, Source::AUX)?;
+        }
+        "optical" | "opt" | "o" => {
+            set_source(&mut stream, Source::Optical)?;
+        }
         "source" | "src" | "s" => {
-            let source = if args.len() > 2 {
-                let new_source = match args[2].as_str() {
-                    "wifi" | "w" => Source::Wifi,
-                    "usb" | "u" => Source::USB,
-                    "bluetooth" | "bt" | "b" => Source::BluetoothPaired,
-                    "aux" | "a" => Source::AUX,
-                    "optical" | "opt" | "o" => Source::Optical,
-                    unknown => panic!("Unknown source: {unknown}"),
-                };
-                let mut status = get_status(&mut stream)?;
-                status.source = new_source;
-                set_status(&mut stream, status)?;
-                new_source
-            } else {
-                get_status(&mut stream)?.source
-            };
-            println!("{source}");
+            println!("{0}", get_status(&mut stream)?.source);
         }
         "auto-off" | "ao" => {
             let auto_off = if args.len() > 2 {
@@ -95,12 +94,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             println!("{orientation}");
         }
+        "+" => {
+            let amount = args[2].parse::<i8>()?;
+            let volume = change_volume(&mut stream, amount)?;
+            println!("{volume}");
+        }
+        "-" => {
+            let amount = -args[2].parse::<i8>()?;
+            let volume = change_volume(&mut stream, amount)?;
+            println!("{volume}");
+        }
         "volume" | "vol" | "v" => {
-            let volume = if args.len() > 3 {
-                let sign: i8 = if args[2] == "-" { -1 } else { 1 };
-                let amount = sign * args[3].parse::<i8>()?;
-                change_volume(&mut stream, amount)?
-            } else if args.len() > 2 {
+            let volume = if args.len() > 2 {
                 let volume = u8::from_str_radix(&args[2], 10)?;
                 set_volume(&mut stream, volume)?
             } else {
@@ -281,6 +286,14 @@ fn set_status(stream: &mut TcpStream, status: Status) -> std::io::Result<u8> {
     let bits = status.to_bits();
     send(stream, &[0x53, 0x30, 0x81, bits])?;
     Ok(bits)
+}
+
+fn set_source(stream: &mut TcpStream, source: Source) -> std::io::Result<()> {
+    let mut status = get_status(stream)?;
+    status.source = source;
+    status.power = Power::On;
+    set_status(stream, status)?;
+    Ok(())
 }
 
 fn change_volume(stream: &mut TcpStream, amount: i8) -> std::io::Result<u8> {
