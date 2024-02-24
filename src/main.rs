@@ -42,7 +42,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             set_status(&mut stream, status)?;
         }
-        "source" | "src" | "s" => {}
+        "source" | "src" | "s" => {
+            let source = if args.len() > 2 {
+                let new_source = match args[2].as_str() {
+                    "wifi" | "w" => Source::Wifi,
+                    "usb" | "u" => Source::USB,
+                    "bluetooth" | "bt" | "b" => Source::BluetoothPaired,
+                    "aux" | "a" => Source::AUX,
+                    "optical" | "opt" | "o" => Source::Optical,
+                    unknown => panic!("Unknown source: {unknown}"),
+                };
+                let mut status = get_status(&mut stream)?;
+                status.source = new_source;
+                set_status(&mut stream, status)?;
+                new_source
+            } else {
+                get_status(&mut stream)?.source
+            };
+            println!("{source:?}");
+        }
+        "auto-off" | "ao" => {
+            let auto_off = if args.len() > 2 {
+                let new_auto_off = match args[2].as_str() {
+                    "20" => AutoOff::TwentyMinutes,
+                    "60" => AutoOff::SixtyMinutes,
+                    "never" | "off" => AutoOff::Never,
+                    unknown => panic!("Unknown auto stand-by value {unknown}"),
+                };
+                let mut status = get_status(&mut stream)?;
+                status.auto_off = new_auto_off;
+                set_status(&mut stream, status)?;
+                new_auto_off
+            } else {
+                get_status(&mut stream)?.auto_off
+            };
+            println!("{auto_off:?}")
+        }
         "volume" | "vol" | "v" => {
             let volume = if args.len() > 3 {
                 let sign: i8 = if args[2] == "-" { -1 } else { 1 };
@@ -80,7 +115,7 @@ enum Source {
 }
 
 #[derive(Copy, Clone, FromPrimitive, Debug)]
-enum AutoStandby {
+enum AutoOff {
     TwentyMinutes = 0b00,
     SixtyMinutes = 0b01,
     Never = 0b10,
@@ -103,7 +138,7 @@ struct Status {
     power: Power,
     orientation: SpeakerOrientation,
     source: Source,
-    auto_standby: AutoStandby,
+    auto_off: AutoOff,
 }
 
 trait Compile {
@@ -113,7 +148,7 @@ trait Compile {
 impl Compile for Status {
     fn compile(&self) -> u8 {
         self.source as u8
-            | ((self.auto_standby as u8) << 4)
+            | ((self.auto_off as u8) << 4)
             | ((self.orientation as u8) << 6)
             | ((self.power as u8) << 7)
     }
@@ -124,9 +159,9 @@ fn parse_status(bits: u8) -> Status {
         Some(x) => x,
         None => Source::Optical,
     };
-    let auto_standby = match AutoStandby::from_u8((bits >> 4) & 0b11) {
+    let auto_off = match AutoOff::from_u8((bits >> 4) & 0b11) {
         Some(x) => x,
-        None => AutoStandby::TwentyMinutes,
+        None => AutoOff::TwentyMinutes,
     };
     let orientation = match SpeakerOrientation::from_u8((bits >> 6) & 1) {
         Some(x) => x,
@@ -140,7 +175,7 @@ fn parse_status(bits: u8) -> Status {
         power,
         orientation,
         source,
-        auto_standby,
+        auto_off,
     }
 }
 
