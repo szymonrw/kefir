@@ -1,5 +1,6 @@
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+use std::fmt::Display;
 use std::io::prelude::*;
 use std::net::TcpStream;
 use std::{cmp, env};
@@ -59,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 get_status(&mut stream)?.source
             };
-            println!("{source:?}");
+            println!("{source}");
         }
         "auto-off" | "ao" => {
             let auto_off = if args.len() > 2 {
@@ -76,7 +77,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 get_status(&mut stream)?.auto_off
             };
-            println!("{auto_off:?}")
+            println!("{auto_off}")
+        }
+        "main" | "orientation" => {
+            let orientation = if args.len() > 2 {
+                let new_orientation = match args[2].as_str() {
+                    "left" => SpeakerOrientation::MainIsLeft,
+                    "right" => SpeakerOrientation::MainIsRight,
+                    unknown => panic!("Unknown orientation value {unknown}"),
+                };
+                let mut status = get_status(&mut stream)?;
+                status.orientation = new_orientation;
+                set_status(&mut stream, status)?;
+                new_orientation
+            } else {
+                get_status(&mut stream)?.orientation
+            };
+            println!("{orientation}");
         }
         "volume" | "vol" | "v" => {
             let volume = if args.len() > 3 {
@@ -89,11 +106,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 get_volume(&mut stream)?
             };
-            println!("{volume:?}");
+            println!("{volume}");
         }
         "status" | "" => {
-            let status = get_status(&mut stream);
-            println!("{status:?}");
+            let status = get_status(&mut stream)?;
+            let volume = get_volume(&mut stream)?;
+            println!("Power:\t\t{0:?}", status.power);
+            println!("Source:\t\t{0}", status.source);
+            println!("Volume:\t\t{0}", volume);
+            println!("Auto-Off:\t{0}", status.auto_off);
+            println!("Orientation:\t{0}", status.orientation);
         }
         cmd => {
             println!("Unknown command: {cmd}");
@@ -104,7 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[derive(Copy, Clone, FromPrimitive, Debug)]
+#[derive(Copy, Clone, FromPrimitive)]
 enum Source {
     Wifi = 0b0010,
     USB = 0b1100,
@@ -114,11 +136,35 @@ enum Source {
     Optical = 0b1011,
 }
 
-#[derive(Copy, Clone, FromPrimitive, Debug)]
+impl Display for Source {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let out = match self {
+            Source::Wifi => "Wifi",
+            Source::USB => "USB",
+            Source::BluetoothPaired | Source::BluetoothUnpaired => "Bluetooth",
+            Source::AUX => "AUX",
+            Source::Optical => "Optical",
+        };
+        write!(f, "{}", out)
+    }
+}
+
+#[derive(Copy, Clone, FromPrimitive)]
 enum AutoOff {
     TwentyMinutes = 0b00,
     SixtyMinutes = 0b01,
     Never = 0b10,
+}
+
+impl Display for AutoOff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let out = match self {
+            AutoOff::TwentyMinutes => "20 minutes",
+            AutoOff::SixtyMinutes => "60 minutes",
+            AutoOff::Never => "Never",
+        };
+        write!(f, "{}", out)
+    }
 }
 
 #[derive(Copy, Clone, FromPrimitive, Debug)]
@@ -127,13 +173,23 @@ enum Power {
     On = 0,
 }
 
-#[derive(Copy, Clone, FromPrimitive, Debug)]
+#[derive(Copy, Clone, FromPrimitive)]
 enum SpeakerOrientation {
     MainIsLeft = 1,
     MainIsRight = 0,
 }
 
-#[derive(Copy, Clone, Debug)]
+impl Display for SpeakerOrientation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let out = match self {
+            Self::MainIsLeft => "Main speaker is on the left",
+            Self::MainIsRight => "Main speaker is on the right",
+        };
+        write!(f, "{}", out)
+    }
+}
+
+#[derive(Copy, Clone)]
 struct Status {
     power: Power,
     orientation: SpeakerOrientation,
