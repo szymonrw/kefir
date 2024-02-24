@@ -12,36 +12,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match command {
         "on" => {
-            let mut status = get_status(&mut stream)?;
-            match status.power {
-                Power::Off => {
-                    status.power = Power::On;
-                    set_status(&mut stream, status)?;
-                }
-                Power::On => {}
-            }
+            set_power(&mut stream, Power::On)?;
         }
         "off" => {
-            let mut status = get_status(&mut stream)?;
-            match status.power {
-                Power::On => {
-                    status.power = Power::Off;
-                    set_status(&mut stream, status)?;
-                }
-                Power::Off => {}
-            }
+            set_power(&mut stream, Power::Off)?;
         }
         "toggle" | "t" => {
-            let mut status = get_status(&mut stream)?;
-            match status.power {
-                Power::On => {
-                    status.power = Power::Off;
-                }
-                Power::Off => {
-                    status.power = Power::On;
-                }
-            };
-            set_status(&mut stream, status)?;
+            let status = get_status(&mut stream)?;
+            set_power(&mut stream, status.power.invert())?;
         }
         "wifi" | "w" => {
             set_source(&mut stream, Source::Wifi)?;
@@ -116,7 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "status" | "" => {
             let status = get_status(&mut stream)?;
             let volume = get_volume(&mut stream)?;
-            println!("Power:\t\t{0:?}", status.power);
+            println!("Power:\t\t{0}", status.power);
             println!("Source:\t\t{0}", status.source);
             println!("Volume:\t\t{0}", volume);
             println!("Auto-Off:\t{0}", status.auto_off);
@@ -232,10 +210,19 @@ impl Display for SpeakerOrientation {
     }
 }
 
-#[derive(Copy, Clone, FromPrimitive, Debug)]
+#[derive(Copy, Clone, FromPrimitive)]
 enum Power {
     Off = 1,
     On = 0,
+}
+
+impl Power {
+    fn invert(&self) -> Power {
+        match self {
+            Power::Off => Power::On,
+            Power::On => Power::Off,
+        }
+    }
 }
 
 impl Setting for Power {
@@ -248,6 +235,16 @@ impl Setting for Power {
 
     fn to_bits(&self) -> u8 {
         (self.clone() as u8) << 7
+    }
+}
+
+impl Display for Power {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let out = match self {
+            Power::On => "On",
+            Power::Off => "Off",
+        };
+        write!(f, "{}", out)
     }
 }
 
@@ -276,6 +273,21 @@ impl Setting for Status {
     }
 }
 
+fn set_power(stream: &mut TcpStream, power: Power) -> std::io::Result<()> {
+    let mut status = get_status(stream)?;
+    status.power = power;
+    set_status(stream, status)?;
+    Ok(())
+}
+
+fn set_source(stream: &mut TcpStream, source: Source) -> std::io::Result<()> {
+    let mut status = get_status(stream)?;
+    status.source = source;
+    status.power = Power::On;
+    set_status(stream, status)?;
+    Ok(())
+}
+
 fn get_status(stream: &mut TcpStream) -> std::io::Result<Status> {
     let bytes = send(stream, &[0x47, 0x30, 0x80])?;
     let bits = bytes[3];
@@ -286,14 +298,6 @@ fn set_status(stream: &mut TcpStream, status: Status) -> std::io::Result<u8> {
     let bits = status.to_bits();
     send(stream, &[0x53, 0x30, 0x81, bits])?;
     Ok(bits)
-}
-
-fn set_source(stream: &mut TcpStream, source: Source) -> std::io::Result<()> {
-    let mut status = get_status(stream)?;
-    status.source = source;
-    status.power = Power::On;
-    set_status(stream, status)?;
-    Ok(())
 }
 
 fn change_volume(stream: &mut TcpStream, amount: i8) -> std::io::Result<u8> {
