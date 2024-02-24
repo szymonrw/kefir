@@ -1,5 +1,5 @@
-use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 use std::io::prelude::*;
 use std::net::TcpStream;
 use std::{cmp, env};
@@ -10,6 +10,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect("192.168.0.2:50001")?;
 
     match command {
+        "on" => {
+            let mut status = get_status(&mut stream)?;
+            match status.power {
+                Power::Off => {
+                    status.power = Power::On;
+                    set_status(&mut stream, status)?;
+                }
+                Power::On => {}
+            }
+        }
+        "off" => {
+            let mut status = get_status(&mut stream)?;
+            match status.power {
+                Power::On => {
+                    status.power = Power::Off;
+                    set_status(&mut stream, status)?;
+                }
+                Power::Off => {}
+            }
+        }
+        "toggle" => {
+            let mut status = get_status(&mut stream)?;
+            match status.power {
+                Power::On => {
+                    status.power = Power::Off;
+                }
+                Power::Off => {
+                    status.power = Power::On;
+                }
+            };
+            set_status(&mut stream, status)?;
+        }
         "source" | "src" | "s" => {}
         "volume" | "vol" | "v" => {
             let volume = if args.len() > 3 {
@@ -37,76 +69,91 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[derive(Debug, FromPrimitive, ToPrimitive)]
+#[derive(Copy, Clone, FromPrimitive, Debug)]
 enum Source {
     Wifi = 0b0010,
     USB = 0b1100,
-    Bluetooth = 0b1001,
+    BluetoothPaired = 0b1001,
+    BluetoothUnpaired = 0b1111,
     AUX = 0b1010,
     Optical = 0b1011,
 }
 
-#[derive(Debug, FromPrimitive, ToPrimitive)]
+#[derive(Copy, Clone, FromPrimitive, Debug)]
 enum AutoStandby {
     TwentyMinutes = 0b00,
     SixtyMinutes = 0b01,
     Never = 0b10,
 }
 
-#[derive(Debug, FromPrimitive, ToPrimitive)]
+#[derive(Copy, Clone, FromPrimitive, Debug)]
 enum Power {
     Off = 1,
     On = 0,
 }
 
-#[derive(Debug, FromPrimitive, ToPrimitive)]
+#[derive(Copy, Clone, FromPrimitive, Debug)]
 enum SpeakerOrientation {
     MainIsLeft = 1,
     MainIsRight = 0,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 struct Status {
     power: Power,
     orientation: SpeakerOrientation,
     source: Source,
-    standby: AutoStandby,
+    auto_standby: AutoStandby,
+}
+
+trait Compile {
+    fn compile(&self) -> u8;
+}
+
+impl Compile for Status {
+    fn compile(&self) -> u8 {
+        self.source as u8
+            | ((self.auto_standby as u8) << 4)
+            | ((self.orientation as u8) << 6)
+            | ((self.power as u8) << 7)
+    }
+}
+
+fn parse_status(bits: u8) -> Status {
+    let source = match Source::from_u8(bits & 0b1111) {
+        Some(x) => x,
+        None => Source::Optical,
+    };
+    let auto_standby = match AutoStandby::from_u8((bits >> 4) & 0b11) {
+        Some(x) => x,
+        None => AutoStandby::TwentyMinutes,
+    };
+    let orientation = match SpeakerOrientation::from_u8((bits >> 6) & 1) {
+        Some(x) => x,
+        None => SpeakerOrientation::MainIsRight,
+    };
+    let power = match Power::from_u8((bits >> 7) & 1) {
+        Some(x) => x,
+        None => Power::Off,
+    };
+    Status {
+        power,
+        orientation,
+        source,
+        auto_standby,
+    }
 }
 
 fn get_status(stream: &mut TcpStream) -> std::io::Result<Status> {
     let bytes = send(stream, &[0x47, 0x30, 0x80])?;
     let bits = bytes[3];
-    println!("{bits:b}");
-    let source = match FromPrimitive::from_u8(bits & 0b1111) {
-        Some(Source::Wifi) => Source::Wifi,
-        Some(Source::USB) => Source::USB,
-        Some(Source::Bluetooth) => Source::Bluetooth,
-        Some(Source::AUX) => Source::AUX,
-        Some(Source::Optical) => Source::Optical,
-        None => Source::Optical,
-    };
-    let standby = match FromPrimitive::from_u8((bits >> 4) & 0b11) {
-        Some(AutoStandby::TwentyMinutes) => AutoStandby::TwentyMinutes,
-        Some(AutoStandby::SixtyMinutes) => AutoStandby::SixtyMinutes,
-        Some(AutoStandby::Never) => AutoStandby::Never,
-        None => AutoStandby::TwentyMinutes,
-    };
-    let orientation = match FromPrimitive::from_u8((bits >> 6) & 1) {
-        Some(SpeakerOrientation::MainIsLeft) => SpeakerOrientation::MainIsLeft,
-        Some(SpeakerOrientation::MainIsRight) => SpeakerOrientation::MainIsRight,
-        None => SpeakerOrientation::MainIsRight,
-    };
-    let power = match FromPrimitive::from_u8((bits >> 7) & 1) {
-        Some(Power::Off) => Power::Off,
-        Some(Power::On) => Power::On,
-        None => Power::Off,
-    };
-    Ok(Status {
-        power,
-        orientation,
-        source,
-        standby,
-    })
+    Ok(parse_status(bits))
+}
+
+fn set_status(stream: &mut TcpStream, status: Status) -> std::io::Result<u8> {
+    let bits = status.compile();
+    send(stream, &[0x53, 0x30, 0x81, bits])?;
+    Ok(bits)
 }
 
 fn change_volume(stream: &mut TcpStream, amount: i8) -> std::io::Result<u8> {
