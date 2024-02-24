@@ -126,6 +126,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+trait Setting {
+    fn from_bits(bits: u8) -> Self;
+    fn to_bits(&self) -> u8;
+}
+
 #[derive(Copy, Clone, FromPrimitive)]
 enum Source {
     Wifi = 0b0010,
@@ -134,6 +139,19 @@ enum Source {
     BluetoothUnpaired = 0b1111,
     AUX = 0b1010,
     Optical = 0b1011,
+}
+
+impl Setting for Source {
+    fn to_bits(&self) -> u8 {
+        (self.clone() as u8) & 0b1111
+    }
+
+    fn from_bits(bits: u8) -> Self {
+        match Source::from_u8(bits & 0b1111) {
+            Some(x) => x,
+            None => Source::Optical,
+        }
+    }
 }
 
 impl Display for Source {
@@ -156,6 +174,19 @@ enum AutoOff {
     Never = 0b10,
 }
 
+impl Setting for AutoOff {
+    fn from_bits(bits: u8) -> Self {
+        match AutoOff::from_u8((bits >> 4) & 0b11) {
+            Some(x) => x,
+            None => AutoOff::TwentyMinutes,
+        }
+    }
+
+    fn to_bits(&self) -> u8 {
+        (self.clone() as u8) << 4
+    }
+}
+
 impl Display for AutoOff {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let out = match self {
@@ -167,16 +198,23 @@ impl Display for AutoOff {
     }
 }
 
-#[derive(Copy, Clone, FromPrimitive, Debug)]
-enum Power {
-    Off = 1,
-    On = 0,
-}
-
 #[derive(Copy, Clone, FromPrimitive)]
 enum SpeakerOrientation {
     MainIsLeft = 1,
     MainIsRight = 0,
+}
+
+impl Setting for SpeakerOrientation {
+    fn from_bits(bits: u8) -> Self {
+        match SpeakerOrientation::from_u8((bits >> 6) & 1) {
+            Some(x) => x,
+            None => SpeakerOrientation::MainIsRight,
+        }
+    }
+
+    fn to_bits(&self) -> u8 {
+        (self.clone() as u8) << 6
+    }
 }
 
 impl Display for SpeakerOrientation {
@@ -189,6 +227,25 @@ impl Display for SpeakerOrientation {
     }
 }
 
+#[derive(Copy, Clone, FromPrimitive, Debug)]
+enum Power {
+    Off = 1,
+    On = 0,
+}
+
+impl Setting for Power {
+    fn from_bits(bits: u8) -> Self {
+        match Power::from_u8((bits >> 7) & 1) {
+            Some(x) => x,
+            None => Power::Off,
+        }
+    }
+
+    fn to_bits(&self) -> u8 {
+        (self.clone() as u8) << 7
+    }
+}
+
 #[derive(Copy, Clone)]
 struct Status {
     power: Power,
@@ -197,52 +254,31 @@ struct Status {
     auto_off: AutoOff,
 }
 
-trait Compile {
-    fn compile(&self) -> u8;
-}
-
-impl Compile for Status {
-    fn compile(&self) -> u8 {
-        self.source as u8
-            | ((self.auto_off as u8) << 4)
-            | ((self.orientation as u8) << 6)
-            | ((self.power as u8) << 7)
+impl Setting for Status {
+    fn from_bits(bits: u8) -> Self {
+        Status {
+            source: Source::from_bits(bits),
+            auto_off: AutoOff::from_bits(bits),
+            orientation: SpeakerOrientation::from_bits(bits),
+            power: Power::from_bits(bits),
+        }
     }
-}
-
-fn parse_status(bits: u8) -> Status {
-    let source = match Source::from_u8(bits & 0b1111) {
-        Some(x) => x,
-        None => Source::Optical,
-    };
-    let auto_off = match AutoOff::from_u8((bits >> 4) & 0b11) {
-        Some(x) => x,
-        None => AutoOff::TwentyMinutes,
-    };
-    let orientation = match SpeakerOrientation::from_u8((bits >> 6) & 1) {
-        Some(x) => x,
-        None => SpeakerOrientation::MainIsRight,
-    };
-    let power = match Power::from_u8((bits >> 7) & 1) {
-        Some(x) => x,
-        None => Power::Off,
-    };
-    Status {
-        power,
-        orientation,
-        source,
-        auto_off,
+    fn to_bits(&self) -> u8 {
+        self.source.to_bits()
+            | self.auto_off.to_bits()
+            | self.orientation.to_bits()
+            | self.power.to_bits()
     }
 }
 
 fn get_status(stream: &mut TcpStream) -> std::io::Result<Status> {
     let bytes = send(stream, &[0x47, 0x30, 0x80])?;
     let bits = bytes[3];
-    Ok(parse_status(bits))
+    Ok(Status::from_bits(bits))
 }
 
 fn set_status(stream: &mut TcpStream, status: Status) -> std::io::Result<u8> {
-    let bits = status.compile();
+    let bits = status.to_bits();
     send(stream, &[0x53, 0x30, 0x81, bits])?;
     Ok(bits)
 }
