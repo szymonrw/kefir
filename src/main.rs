@@ -12,14 +12,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match command {
         "on" => {
-            set_power(&mut stream, Power::On)?;
+            change_status(&mut stream, |status| {
+                status.power = Power::On;
+            })?;
         }
         "off" => {
-            set_power(&mut stream, Power::Off)?;
+            change_status(&mut stream, |status| {
+                status.power = Power::Off;
+            })?;
         }
         "toggle" | "t" => {
-            let status = get_status(&mut stream)?;
-            set_power(&mut stream, status.power.invert())?;
+            change_status(&mut stream, |status| {
+                status.power = status.power.invert();
+            })?;
         }
         "wifi" | "w" => {
             set_source(&mut stream, Source::Wifi)?;
@@ -45,11 +50,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "20" => AutoOff::TwentyMinutes,
                     "60" => AutoOff::SixtyMinutes,
                     "never" | "off" => AutoOff::Never,
-                    unknown => panic!("Unknown auto stand-by value {unknown}"),
+                    unknown => panic!("Unknown auto off value {unknown}"),
                 };
-                let mut status = get_status(&mut stream)?;
-                status.auto_off = new_auto_off;
-                set_status(&mut stream, status)?;
+                change_status(&mut stream, |status| {
+                    status.auto_off = new_auto_off;
+                })?;
                 new_auto_off
             } else {
                 get_status(&mut stream)?.auto_off
@@ -63,9 +68,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "right" => SpeakerOrientation::MainIsRight,
                     unknown => panic!("Unknown orientation value {unknown}"),
                 };
-                let mut status = get_status(&mut stream)?;
-                status.orientation = new_orientation;
-                set_status(&mut stream, status)?;
+                change_status(&mut stream, |status| {
+                    status.orientation = new_orientation;
+                })?;
                 new_orientation
             } else {
                 get_status(&mut stream)?.orientation
@@ -273,18 +278,21 @@ impl Setting for Status {
     }
 }
 
-fn set_power(stream: &mut TcpStream, power: Power) -> std::io::Result<()> {
+fn change_status<F>(stream: &mut TcpStream, f: F) -> std::io::Result<()>
+where
+    F: Fn(&mut Status),
+{
     let mut status = get_status(stream)?;
-    status.power = power;
+    f(&mut status);
     set_status(stream, status)?;
     Ok(())
 }
 
 fn set_source(stream: &mut TcpStream, source: Source) -> std::io::Result<()> {
-    let mut status = get_status(stream)?;
-    status.source = source;
-    status.power = Power::On;
-    set_status(stream, status)?;
+    change_status(stream, |status| {
+        status.source = source;
+        status.power = Power::On;
+    })?;
     Ok(())
 }
 
