@@ -78,8 +78,8 @@ impl Display for AutoOff {
 
 #[derive(Copy, Clone, FromPrimitive)]
 pub enum SpeakerOrientation {
-    MainIsLeft = 1,
     MainIsRight = 0,
+    MainIsLeft = 1,
 }
 
 impl Setting for SpeakerOrientation {
@@ -107,8 +107,8 @@ impl Display for SpeakerOrientation {
 
 #[derive(Copy, Clone, FromPrimitive)]
 pub enum Power {
-    Off = 1,
     On = 0,
+    Off = 1,
 }
 
 impl Power {

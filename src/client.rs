@@ -1,7 +1,6 @@
-use std::io::{Read, Write};
-use std::{io::Result, net::TcpStream};
+use std::io::{Read, Result, Write};
 
-pub fn send(stream: &mut TcpStream, cmd: &[u8]) -> Result<[u8; 8]> {
+pub fn send(stream: &mut (impl Read + Write), cmd: &[u8]) -> Result<[u8; 8]> {
     let mut result = [0; 8];
     stream.write(&cmd)?;
     stream.read(&mut result)?;
