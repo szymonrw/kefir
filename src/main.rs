@@ -1,3 +1,4 @@
+use env_logger;
 use std::env;
 use std::net::TcpStream;
 
@@ -8,6 +9,7 @@ use status::{change_status, get_status, set_source, AutoOff, Power, Source, Spea
 use volume::{change_volume, get_volume, set_volume};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
     let args: Vec<String> = env::args().collect();
     let command = if args.len() > 1 { args[1].as_str() } else { "" };
     let mut stream = TcpStream::connect("192.168.0.2:50001")?;
